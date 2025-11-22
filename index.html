@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Gerador de Pix</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" sizes="192x192" href="icons/icon-192.png">
+  <link rel="icon" sizes="512x512" href="icons/icon-512.png">
+  <style>
+    :root{ --bg:#0f172a; --panel:#111827; --card:#1f2937; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(120deg,var(--bg),#0b1222);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+    .wrap{max-width:720px;margin:0 auto;padding:16px 16px 64px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    h1{font-size:clamp(20px,4vw,28px);margin:8px 0}
+    .card{background:var(--card);border:1px solid #223046;border-radius:14px;padding:14px;box-shadow:0 10px 20px rgb(0 0 0 / .25);margin-bottom:16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:10px}
+    label{font-size:14px;color:var(--muted)}
+    select,input,textarea{
+      width:100%;padding:10px 12px;border:1px solid #2a3a4f;border-radius:10px;background:#0f1b2a;color:#e5e7eb;
+      font-size:15px;outline:none;
+    }
+    select:focus,input:focus,textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 1px #1d4ed8}
+    input::placeholder,textarea::placeholder{color:#6b7b8d}
+    textarea{min-height:120px;resize:vertical;font-family:monospace}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .footer{margin-top:14px;font-size:12px;color:#9ca3af}
+    .pill{display:inline-block;background:#0c2235;border:1px solid #1e3a5f;color:#bcd2eb;padding:4px 8px;border-radius:999px;font-size:12px}
+    .accent{color:var(--accent);font-weight:700}
+    .btn{width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #244a34;background:#11251a;color:#c6f6d5;font-weight:700;cursor:pointer}
+    .btn-secondary{width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid #334155;background:#020617;color:#e5e7eb;font-size:14px;cursor:pointer}
+    .btn:disabled,.btn-secondary:disabled{opacity:.5;cursor:not-allowed}
+    .error{color:var(--danger);font-size:12px;margin-top:4px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Gerador de Pix</h1>
+      <span class="pill">Copia e cola • Offline PWA</span>
+    </header>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="tipoChave">Tipo de chave Pix</label>
+          <select id="tipoChave">
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">E-mail</option>
+            <option value="tel">Telefone</option>
+            <option value="aleatoria">Chave aleatória</option>
+          </select>
+          <div id="exemplo" class="hint"></div>
+        </div>
+
+        <div>
+          <label for="chave">Chave Pix</label>
+          <input id="chave" type="text" placeholder="" />
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="valor">Valor (R$) — opcional</label>
+            <input id="valor" type="text" inputmode="decimal" placeholder="ex.: 149,90" />
+          </div>
+          <div>
+            <label for="descricao">Mensagem para o recebedor (opcional)</label>
+            <input id="descricao" type="text" placeholder="Digite a mensagem que aparecerá para quem receber o Pix" />
+            <div class="hint">Máx. 50 caracteres, sem acento ou emoji. Será convertida para maiúsculas.</div>
+          </div>
+        </div>
+
+        <div id="erro" class="error"></div>
+
+        <button id="btnGerar" class="btn">⚙️ Gerar código Pix copia e cola</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="codigo">Código Pix (copia e cola)</label>
+          <textarea id="codigo" readonly placeholder="O código Pix aparecerá aqui após gerar."></textarea>
+          <button id="btnCopiar" class="btn-secondary">📋 Copiar código</button>
+        </div>
+
+        <div>
+          <button id="btnWhats" class="btn">📤 Enviar pelo WhatsApp</button>
+          <div class="hint">
+            O código será enviado sozinho, sem texto adicional.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tipoChave = document.getElementById('tipoChave');
+    const exemplo = document.getElementById('exemplo');
+    const chave = document.getElementById('chave');
+    const valor = document.getElementById('valor');
+    const descricao = document.getElementById('descricao');
+    const erro = document.getElementById('erro');
+    const btnGerar = document.getElementById('btnGerar');
+    const codigo = document.getElementById('codigo');
+    const btnCopiar = document.getElementById('btnCopiar');
+    const btnWhats = document.getElementById('btnWhats');
+
+    const exemplos = {
+      cpf: 'Exemplo de CPF: 123.456.789-09',
+      cnpj: 'Exemplo de CNPJ: 12.345.678/0001-99',
+      email: 'Exemplo de e-mail: exemplo@dominio.com',
+      tel: 'Telefone: digite só DDD + número, ex.: 21999990000 (o app adiciona +55 no código)',
+      aleatoria: 'Exemplo de chave aleatória: 123e4567-e89b-12d3-a456-426614174000'
+    };
+
+    function atualizarExemplo(){
+      exemplo.textContent = exemplos[tipoChave.value] || '';
+      chave.placeholder = exemplos[tipoChave.value] || '';
+    }
+    tipoChave.addEventListener('change', atualizarExemplo);
+    atualizarExemplo();
+
+    // Persistência simples (sem salvar a mensagem/descricao)
+    const SAVED = JSON.parse(localStorage.getItem('pix-generator-v4') || '{}');
+    ['tipoChave','chave','valor'].forEach(id => {
+      if(SAVED[id]){
+        if(id === 'tipoChave') tipoChave.value = SAVED[id];
+        else document.getElementById(id).value = SAVED[id];
+      }
+    });
+    atualizarExemplo();
+
+    function salvar(){
+      const data = {
+        tipoChave: tipoChave.value,
+        chave: chave.value,
+        valor: valor.value
+      };
+      localStorage.setItem('pix-generator-v4', JSON.stringify(data));
+    }
+    [tipoChave,chave,valor].forEach(el => el.addEventListener('input', salvar));
+
+    // Sanitização em tempo real da mensagem (sem salvar)
+    descricao.addEventListener('input', () => {
+      let cur = descricao.value;
+      // remove acentos
+      cur = cur.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // converte pra maiúsculo
+      cur = cur.toUpperCase();
+      // mantém apenas letras, números, espaço, ponto e hífen
+      cur = cur.replace(/[^A-Z0-9 \-\.]/g, '');
+      // limita a 50 caracteres
+      if(cur.length > 50){
+        cur = cur.substring(0,50);
+      }
+      descricao.value = cur;
+    });
+
+    function tlv(id, value){
+      const len = String(value.length).padStart(2, '0');
+      return id + len + value;
+    }
+
+    function sanitizeText(str, max){
+      if(!str) return '';
+      let s = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      s = s.toUpperCase();
+      s = s.replace(/[^A-Z0-9 \-\.]/g, '');
+      if(max) s = s.substring(0, max);
+      return s;
+    }
+
+    function toNum(str){
+      if(!str) return NaN;
+      str = String(str).trim().replace(/\./g,'').replace(',','.');
+      const n = Number(str);
+      return isNaN(n) ? NaN : n;
+    }
+
+    function crc16(payload){
+      let crc = 0xFFFF;
+      for(let i=0;i<payload.length;i++){
+        crc ^= payload.charCodeAt(i) << 8;
+        for(let j=0;j<8;j++){
+          if((crc & 0x8000) !== 0){
+            crc = (crc << 1) ^ 0x1021;
+          }else{
+            crc = crc << 1;
+          }
+          crc &= 0xFFFF;
+        }
+      }
+      return crc.toString(16).toUpperCase().padStart(4,'0');
+    }
+
+    function gerarPayloadPix(){
+      erro.textContent = '';
+      let c = chave.value.trim();
+      if(!c){
+        erro.textContent = 'Informe a chave Pix.';
+        return null;
+      }
+
+      // Telefone: força +55
+      if(tipoChave.value === 'tel'){
+        const soNumeros = c.replace(/\D/g,'');
+        if(soNumeros.length < 10){
+          erro.textContent = 'Telefone inválido. Use DDD + número, ex.: 21999990000.';
+          return null;
+        }
+        c = '+55' + soNumeros;
+      }
+
+      const nomeSan = 'RECEBEDOR';          // fixo
+      const cidadeSan = 'RIO DE JANEIRO';   // fixo
+      const descSan = sanitizeText(descricao.value || '', 50);
+
+      const amountNum = toNum(valor.value);
+      const hasAmount = !isNaN(amountNum) && amountNum > 0;
+      const amountStr = hasAmount ? amountNum.toFixed(2) : '';
+
+      // Txid sempre gerado automaticamente
+      let txid = 'TX' + Date.now().toString().slice(-8);
+      txid = sanitizeText(txid, 25);
+
+      let mai = '';
+      mai += tlv('00','BR.GOV.BCB.PIX');
+      mai += tlv('01', c);
+      if(descSan){
+        mai += tlv('02', descSan);
+      }
+      const gui26 = tlv('26', mai);
+
+      let payload = '';
+      payload += tlv('00','01');      // Payload Format Indicator
+      payload += tlv('01','11');      // Point of Initiation Method (estático)
+      payload += gui26;               // Merchant Account Information
+      payload += tlv('52','0000');    // MCC
+      payload += tlv('53','986');     // Moeda BRL
+      if(hasAmount){
+        payload += tlv('54', amountStr);
+      }
+      payload += tlv('58','BR');      // País
+      payload += tlv('59', nomeSan);  // Nome recebedor fixo
+      payload += tlv('60', cidadeSan);// Cidade fixa
+      const addData = tlv('05', txid);
+      payload += tlv('62', addData);  // Dados adicionais (Txid)
+
+      const semCRC = payload + '6304';
+      const crc = crc16(semCRC);
+      payload = semCRC + crc;
+
+      return payload;
+    }
+
+    btnGerar.addEventListener('click', () => {
+      const p = gerarPayloadPix();
+      if(p){
+        codigo.value = p;
+      }else{
+        codigo.value = '';
+      }
+    });
+
+    btnCopiar.addEventListener('click', async () => {
+      if(!codigo.value){
+        return;
+      }
+      try{
+        await navigator.clipboard.writeText(codigo.value);
+        btnCopiar.textContent = '✅ Copiado!';
+        setTimeout(() => btnCopiar.textContent = '📋 Copiar código', 1500);
+      }catch(e){
+        btnCopiar.textContent = 'Copie manualmente o texto acima';
+        setTimeout(() => btnCopiar.textContent = '📋 Copiar código', 2000);
+      }
+    });
+
+    btnWhats.addEventListener('click', () => {
+      if(!codigo.value){
+        const p = gerarPayloadPix();
+        if(!p) return;
+        codigo.value = p;
+      }
+      const msg = codigo.value; // só o código
+      const url = 'https://wa.me/?text=' + encodeURIComponent(msg);
+      window.open(url,'_blank');
+    });
+
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+      });
+    }
+  </script>
+</body>
+</html>
