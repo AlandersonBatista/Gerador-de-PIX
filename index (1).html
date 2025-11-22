@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador de Pix</title>
+<style>
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Helvetica Neue,Arial;background:#0f172a;color:#e5e7eb}
+.wrap{max-width:880px;margin:auto;padding:20px}
+.card{background:#1f2937;border-radius:12px;padding:20px}
+label{display:block;margin-top:10px;color:#94a3b8;font-size:13px}
+select,input{width:100%;padding:10px;margin-top:4px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:#0e162a;color:#e5e7eb}
+button{margin-top:10px;padding:12px 16px;border:none;border-radius:8px;font-weight:600}
+.primary{background:#22c55e;color:#001b0b}
+.secondary{background:#0e162a;color:#e5e7eb;border:1px solid rgba(255,255,255,.2)}
+.row{display:flex;flex-wrap:wrap;gap:10px}
+.preview{margin-top:20px;display:grid;grid-template-columns:1fr 300px;gap:20px}
+@media(max-width:800px){.preview{grid-template-columns:1fr}}
+pre{background:#0d1323;padding:10px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+canvas{background:#fff;border-radius:8px}
+.footer{text-align:center;margin-top:20px;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>Gerador de Pix</h2>
+<div class="card">
+<label>Tipo de chave</label>
+<select id="tipo">
+<option value="phone">Telefone</option>
+<option value="email">E-mail</option>
+<option value="cpf">CPF/CNPJ</option>
+<option value="random">Chave Aleatória (EVP)</option>
+</select>
+<label>Chave Pix</label>
+<input id="chave" placeholder="Ex: 21979183738">
+<label>Valor</label>
+<input id="valor" placeholder="Ex: 150.00" inputmode="decimal">
+<div class="row">
+<button class="primary" id="gerar">Gerar código</button>
+<button class="secondary" id="copiar">Copiar código</button>
+<button class="secondary" id="whats">Enviar WhatsApp</button>
+<button class="secondary" id="salvar">Salvar QR (PNG)</button>
+</div>
+<div class="preview">
+<pre id="payload"></pre>
+<canvas id="qr" width="280" height="280"></canvas>
+</div>
+</div>
+<div class="footer">Desenvolvido por Alanderson Batista</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+function enc(s){return new TextEncoder().encode(s);}
+function len2(n){return n<10?"0"+n:String(n);}
+function field(tag,val){return tag+len2(enc(val).length)+val;}
+function crc16_ccitt(s){const b=enc(s);let crc=0xFFFF;for(const x of b){crc^=x<<8;for(let i=0;i<8;i++)crc=(crc&0x8000)?((crc<<1)^0x1021)&0xFFFF:(crc<<1)&0xFFFF;}return crc.toString(16).toUpperCase().padStart(4,'0');}
+function norm(v){if(!v)return"";const n=Number(String(v).replace(',','.'));return n.toFixed(2);}
+function buildPix(key,amt){let r='000201';const mai=field('00','BR.GOV.BCB.PIX')+field('01',key);r+=field('26',mai);r+=field('52','0000');r+=field('53','986');if(amt)r+=field('54',norm(amt));r+=field('58','BR');r+='5901N';r+='6001C';const add=field('05','pagamentopix');r+=field('62',add);const p=r+'6304';const crc=crc16_ccitt(p);return r+'6304'+crc;}
+function formatKey(t,raw){raw=raw.trim();if(t==='phone'){let d=raw.replace(/\D/g,'');if(!d.startsWith('55'))d='+55'+d;else d='+'+d;return d;}return raw;}
+const tipo=document.getElementById('tipo'),chave=document.getElementById('chave'),valor=document.getElementById('valor'),payload=document.getElementById('payload'),canvas=document.getElementById('qr');
+document.getElementById('gerar').onclick=()=>{const key=formatKey(tipo.value,chave.value);if(!key||!valor.value){alert('Informe chave e valor');return;}const p=buildPix(key,valor.value);payload.textContent=p;QRCode.toCanvas(canvas,p,{errorCorrectionLevel:'M',width:280},err=>{if(err)alert('Erro QR: '+err);});};
+document.getElementById('copiar').onclick=async()=>{const txt=payload.textContent;if(!txt){alert('Gere o código primeiro');return;}await navigator.clipboard.writeText(txt);alert('Copiado!');};
+document.getElementById('whats').onclick=()=>{const txt=payload.textContent;if(!txt){alert('Gere o código primeiro');return;}location.href='https://wa.me/?text='+encodeURIComponent(txt);};
+document.getElementById('salvar').onclick=()=>{const dataURL=canvas.toDataURL('image/png');const a=document.createElement('a');const v=valor.value.trim().replace(/[^0-9.]/g,'');a.href=dataURL;a.download='qrpix_'+(v||'valor')+'.png';a.click();};
+</script>
+</body>
+</html>
