@@ -8,6 +8,8 @@
   <meta name="theme-color" content="#0f172a">
   <link rel="icon" sizes="192x192" href="icons/icon-192.png">
   <link rel="icon" sizes="512x512" href="icons/icon-512.png">
+  <!-- jsPDF para gerar PDF no próprio celular -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root{ --bg:#0f172a; --panel:#111827; --card:#1f2937; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -25,16 +27,19 @@
     }
     select:focus,input:focus,textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 1px #1d4ed8}
     input::placeholder,textarea::placeholder{color:#6b7b8d}
-    textarea{min-height:120px;resize:vertical;font-family:monospace}
+    textarea{min-height:80px;resize:vertical;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .hint{font-size:12px;color:var(--muted);margin-top:2px}
-    .footer{margin-top:14px;font-size:12px;color:#9ca3af}
+    .footer{margin-top:14px;font-size:12px;color:var(--muted)}
     .pill{display:inline-block;background:#0c2235;border:1px solid #1e3a5f;color:#bcd2eb;padding:4px 8px;border-radius:999px;font-size:12px}
     .accent{color:var(--accent);font-weight:700}
     .btn{width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #244a34;background:#11251a;color:#c6f6d5;font-weight:700;cursor:pointer}
     .btn-secondary{width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid #334155;background:#020617;color:#e5e7eb;font-size:14px;cursor:pointer}
-    .btn:disabled,.btn-secondary:disabled{opacity:.5;cursor:not-allowed}
+    .btn-danger{width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid #7f1d1d;background:#450a0a;color:#fecaca;font-size:14px;cursor:pointer}
+    .btn:disabled,.btn-secondary:disabled,.btn-danger:disabled{opacity:.5;cursor:not-allowed}
     .error{color:var(--danger);font-size:12px;margin-top:4px}
+    .qr-wrap{margin-top:8px;text-align:center}
+    .qr-img{max-width:260px;width:100%;border-radius:10px;background:#020617;border:1px solid #1f2937;padding:6px}
   </style>
 </head>
 <body>
@@ -69,15 +74,21 @@
             <input id="valor" type="text" inputmode="decimal" placeholder="ex.: 149,90" />
           </div>
           <div>
-            <label for="descricao">Mensagem para o recebedor (opcional)</label>
-            <input id="descricao" type="text" placeholder="Digite a mensagem que aparecerá para quem receber o Pix" />
-            <div class="hint">Máx. 50 caracteres, sem acento ou emoji. Será convertida para maiúsculas.</div>
+            <label for="nome">Nome do recebedor</label>
+            <input id="nome" type="text" placeholder="Ex.: LOJA IBA STORE" />
+            <div class="hint">Este nome aparecerá no extrato do Pix para quem receber o pagamento.</div>
           </div>
+        </div>
+
+        <div>
+          <label for="descricao">Descrição para o pagador (opcional)</label>
+          <textarea id="descricao" placeholder="Ex.: PAGAMENTO PRODUTO X OU NÚMERO DO PEDIDO"></textarea>
+          <div class="hint">Máx. 50 caracteres, sem acento ou emoji. Será convertido para maiúsculas.</div>
         </div>
 
         <div id="erro" class="error"></div>
 
-        <button id="btnGerar" class="btn">⚙️ Gerar código Pix copia e cola</button>
+        <button id="btnGerar" class="btn">⚙️ Therar código Pix + QR Code</button>
       </div>
     </div>
 
@@ -90,10 +101,38 @@
         </div>
 
         <div>
-          <button id="btnWhats" class="btn">📤 Enviar pelo WhatsApp</button>
+          <label>QR Code do Pix</label>
+          <div class="hint">Use para ler o Pix diretamente na câmera de outro celular.</div>
+          <div class="qr-wrap">
+            <img id="qrImg" class="qr-img" alt="QR Code Pix" style="display:none;" />
+          </div>
+          <button id="btnShareQr" class="btn-secondary" style="margin-top:10px;">📤 Enviar QR + código como legenda</button>
+          <div class="hint">
+            Tenta enviar a imagem do QR Code com o código copia e cola como legenda. Funciona apenas em aparelhos/navegadores que suportam compartilhamento com imagem.
+          </div>
+        </div>
+
+        <div>
+          <button id="btnWhats" class="btn">📤 Enviar só o código pelo WhatsApp</button>
           <div class="hint">
             O código será enviado sozinho, sem texto adicional.
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Histórico de Pix gerados</h2>
+      <div class="grid">
+        <textarea id="historico" readonly placeholder="Nenhum registro ainda."></textarea>
+        <button id="btnRefreshLog" class="btn-secondary">🔄 Atualizar histórico</button>
+        <button id="btnWhatsLog" class="btn-secondary">📤 Enviar relatório em texto (WhatsApp)</button>
+        <button id="btnPdf" class="btn-secondary">📄 Baixar relatório em PDF</button>
+        <button id="btnWhatsPdf" class="btn-secondary">📤 Enviar relatório em PDF (WhatsApp)</button>
+        <button id="btnClearLog" class="btn-danger">🗑️ Limpar histórico</button>
+        <div class="hint">
+          Este histórico é local deste aparelho e armazena <strong>apenas os últimos 100 Pix gerados</strong>.
+          Use "Limpar histórico" para começar uma nova lista quando quiser.
         </div>
       </div>
     </div>
@@ -104,31 +143,56 @@
     const exemplo = document.getElementById('exemplo');
     const chave = document.getElementById('chave');
     const valor = document.getElementById('valor');
+    const nome = document.getElementById('nome');
     const descricao = document.getElementById('descricao');
     const erro = document.getElementById('erro');
     const btnGerar = document.getElementById('btnGerar');
     const codigo = document.getElementById('codigo');
     const btnCopiar = document.getElementById('btnCopiar');
     const btnWhats = document.getElementById('btnWhats');
+    const btnShareQr = document.getElementById('btnShareQr');
+    const qrImg = document.getElementById('qrImg');
+
+    const historico = document.getElementById('historico');
+    const btnRefreshLog = document.getElementById('btnRefreshLog');
+    const btnWhatsLog = document.getElementById('btnWhatsLog');
+    const btnPdf = document.getElementById('btnPdf');
+    const btnWhatsPdf = document.getElementById('btnWhatsPdf');
+    const btnClearLog = document.getElementById('btnClearLog');
 
     const exemplos = {
-      cpf: 'Exemplo de CPF: 123.456.789-09',
-      cnpj: 'Exemplo de CNPJ: 12.345.678/0001-99',
+      cpf: 'Digite apenas números. Exemplo: 10766432726',
+      cnpj: 'Digite apenas números. Exemplo: 12345678000199',
       email: 'Exemplo de e-mail: exemplo@dominio.com',
-      tel: 'Telefone: digite só DDD + número, ex.: 21999990000 (o app adiciona +55 no código)',
-      aleatoria: 'Exemplo de chave aleatória: 123e4567-e89b-12d3-a456-426614174000'
+      tel: 'Telefone: digite apenas DDD + número. Ex.: 21999990000',
+      aleatoria: 'Exemplo de chave aleatória: 123e4567e89b12d3a456426614174000'
     };
 
+    const placeholders = {
+      cpf: 'Ex.: 10766432726',
+      cnpj: 'Ex.: 12345678000199',
+      email: 'Ex.: exemplo@dominio.com',
+      tel: 'Ex.: 21999990000',
+      aleatoria: 'Ex.: 123e4567e89b12d3a456426614174000'
+    };
+
+    function getQrUrl(payload){
+      const base = 'https://api.qrserver.com/v1/create-qr-code/';
+      const params = '?size=260x260&data=' + encodeURIComponent(payload);
+      return base + params;
+    }
+
     function atualizarExemplo(){
-      exemplo.textContent = exemplos[tipoChave.value] || '';
-      chave.placeholder = exemplos[tipoChave.value] || '';
+      const tipo = tipoChave.value;
+      exemplo.textContent = exemplos[tipo] || '';
+      chave.placeholder = placeholders[tipo] || '';
     }
     tipoChave.addEventListener('change', atualizarExemplo);
     atualizarExemplo();
 
-    // Persistência simples (sem salvar a mensagem/descricao)
-    const SAVED = JSON.parse(localStorage.getItem('pix-generator-v4') || '{}');
-    ['tipoChave','chave','valor'].forEach(id => {
+    // Persistência simples (sem salvar a descrição)
+    const SAVED = JSON.parse(localStorage.getItem('pix-generator-v9') || '{}');
+    ['tipoChave','chave','valor','nome'].forEach(id => {
       if(SAVED[id]){
         if(id === 'tipoChave') tipoChave.value = SAVED[id];
         else document.getElementById(id).value = SAVED[id];
@@ -136,26 +200,23 @@
     });
     atualizarExemplo();
 
-    function salvar(){
+    function salvarCamposBasicos(){
       const data = {
         tipoChave: tipoChave.value,
         chave: chave.value,
-        valor: valor.value
+        valor: valor.value,
+        nome: nome.value
       };
-      localStorage.setItem('pix-generator-v4', JSON.stringify(data));
+      localStorage.setItem('pix-generator-v9', JSON.stringify(data));
     }
-    [tipoChave,chave,valor].forEach(el => el.addEventListener('input', salvar));
+    [tipoChave,chave,valor,nome].forEach(el => el.addEventListener('input', salvarCamposBasicos));
 
-    // Sanitização em tempo real da mensagem (sem salvar)
+    // Sanitização em tempo real da descrição (sem salvar)
     descricao.addEventListener('input', () => {
       let cur = descricao.value;
-      // remove acentos
       cur = cur.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      // converte pra maiúsculo
       cur = cur.toUpperCase();
-      // mantém apenas letras, números, espaço, ponto e hífen
       cur = cur.replace(/[^A-Z0-9 \-\.]/g, '');
-      // limita a 50 caracteres
       if(cur.length > 50){
         cur = cur.substring(0,50);
       }
@@ -199,33 +260,129 @@
       return crc.toString(16).toUpperCase().padStart(4,'0');
     }
 
-    function gerarPayloadPix(){
+    function carregarLog(){
+      try{
+        return JSON.parse(localStorage.getItem('pix-log-v1') || '[]');
+      }catch(e){
+        return [];
+      }
+    }
+
+    function salvarLog(log){
+      localStorage.setItem('pix-log-v1', JSON.stringify(log));
+    }
+
+    function formatarData(iso){
+      if(!iso) return '';
+      const d = new Date(iso);
+      if(isNaN(d)) return '';
+      const pad = n => String(n).padStart(2,'0');
+      return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear() +
+             ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    function atualizarHistoricoTexto(){
+      const log = carregarLog();
+      if(!log.length){
+        historico.value = 'Nenhum registro ainda.';
+        return;
+      }
+      const linhas = log.map(r => {
+        return '[' + formatarData(r.dataIso) + '] ' +
+               'ID: ' + (r.id || '-') +
+               ' | Valor: ' + (r.valor || '-') +
+               ' | Recebedor: ' + (r.recebedor || '-') +
+               ' | Msg: ' + (r.mensagem || '-');
+      });
+      historico.value = linhas.join('\n');
+    }
+
+    btnRefreshLog.addEventListener('click', atualizarHistoricoTexto);
+
+    btnWhatsLog.addEventListener('click', () => {
+      const log = carregarLog();
+      if(!log.length){
+        erro.textContent = 'Nenhum registro no histórico para enviar.';
+        return;
+      }
+      const linhas = log.map(r => {
+        return '[' + formatarData(r.dataIso) + '] ' +
+               'ID: ' + (r.id || '-') +
+               ' | Valor: ' + (r.valor || '-') +
+               ' | Recebedor: ' + (r.recebedor || '-') +
+               ' | Msg: ' + (r.mensagem || '-');
+      });
+      const rel = 'RELATORIO DE PIX GERADOS\n' + linhas.join('\n');
+      const url = 'https://wa.me/?text=' + encodeURIComponent(rel);
+      window.open(url,'_blank');
+    });
+
+    btnClearLog.addEventListener('click', () => {
+      const ok = confirm('Tem certeza que deseja limpar todo o histórico de Pix deste aparelho?');
+      if(!ok) return;
+      salvarLog([]);
+      atualizarHistoricoTexto();
       erro.textContent = '';
-      let c = chave.value.trim();
-      if(!c){
+    });
+
+    function registrarNoLog(txid, amountStr, nomeSan, descSan){
+      const agora = new Date();
+      const registro = {
+        id: txid || '',
+        valor: valor.value || amountStr || '',
+        recebedor: nomeSan || '',
+        mensagem: descSan || '',
+        dataIso: agora.toISOString()
+      };
+      let log = carregarLog();
+      log.unshift(registro);
+      if(log.length > 100){
+        log = log.slice(0,100);
+      }
+      salvarLog(log);
+    }
+
+    function gerarPayloadPix(registrar){
+      erro.textContent = '';
+      let cRaw = chave.value.trim();
+      if(!cRaw){
         erro.textContent = 'Informe a chave Pix.';
         return null;
       }
 
-      // Telefone: força +55
+      let c = cRaw;
+
       if(tipoChave.value === 'tel'){
-        const soNumeros = c.replace(/\D/g,'');
+        const soNumeros = cRaw.replace(/\D/g,'');
         if(soNumeros.length < 10){
-          erro.textContent = 'Telefone inválido. Use DDD + número, ex.: 21999990000.';
+          erro.textContent = 'Telefone inválido. Use apenas números: DDD + número. Ex.: 21999990000.';
           return null;
         }
         c = '+55' + soNumeros;
+      } else if(tipoChave.value === 'cpf'){
+        const soNumeros = cRaw.replace(/\D/g,'');
+        if(soNumeros.length !== 11){
+          erro.textContent = 'CPF inválido. Digite 11 números sem pontos ou traço.';
+          return null;
+        }
+        c = soNumeros;
+      } else if(tipoChave.value === 'cnpj'){
+        const soNumeros = cRaw.replace(/\D/g,'');
+        if(soNumeros.length !== 14){
+          erro.textContent = 'CNPJ inválido. Digite 14 números sem pontos, barra ou traço.';
+          return null;
+        }
+        c = soNumeros;
       }
 
-      const nomeSan = 'RECEBEDOR';          // fixo
-      const cidadeSan = 'RIO DE JANEIRO';   // fixo
+      const nomeSan = sanitizeText(nome.value || 'RECEBEDOR', 25);
+      const cidadeSan = 'RIO DE JANEIRO';
       const descSan = sanitizeText(descricao.value || '', 50);
 
       const amountNum = toNum(valor.value);
       const hasAmount = !isNaN(amountNum) && amountNum > 0;
       const amountStr = hasAmount ? amountNum.toFixed(2) : '';
 
-      // Txid sempre gerado automaticamente
       let txid = 'TX' + Date.now().toString().slice(-8);
       txid = sanitizeText(txid, 25);
 
@@ -238,33 +395,51 @@
       const gui26 = tlv('26', mai);
 
       let payload = '';
-      payload += tlv('00','01');      // Payload Format Indicator
-      payload += tlv('01','11');      // Point of Initiation Method (estático)
-      payload += gui26;               // Merchant Account Information
-      payload += tlv('52','0000');    // MCC
-      payload += tlv('53','986');     // Moeda BRL
+      payload += tlv('00','01');
+      payload += tlv('01','11');
+      payload += gui26;
+      payload += tlv('52','0000');
+      payload += tlv('53','986');
       if(hasAmount){
         payload += tlv('54', amountStr);
       }
-      payload += tlv('58','BR');      // País
-      payload += tlv('59', nomeSan);  // Nome recebedor fixo
-      payload += tlv('60', cidadeSan);// Cidade fixa
+      payload += tlv('58','BR');
+      payload += tlv('59', nomeSan);
+      payload += tlv('60', cidadeSan);
       const addData = tlv('05', txid);
-      payload += tlv('62', addData);  // Dados adicionais (Txid)
+      payload += tlv('62', addData);
 
       const semCRC = payload + '6304';
       const crc = crc16(semCRC);
       payload = semCRC + crc;
 
+      if(registrar){
+        registrarNoLog(txid, amountStr, nomeSan, descSan);
+        atualizarHistoricoTexto();
+      }
+
       return payload;
     }
 
+    function atualizarQr(payload){
+      if(!payload){
+        qrImg.style.display = 'none';
+        qrImg.src = '';
+        return;
+      }
+      const url = getQrUrl(payload);
+      qrImg.src = url;
+      qrImg.style.display = 'block';
+    }
+
     btnGerar.addEventListener('click', () => {
-      const p = gerarPayloadPix();
+      const p = gerarPayloadPix(true); // registra no log
       if(p){
         codigo.value = p;
+        atualizarQr(p);
       }else{
         codigo.value = '';
+        atualizarQr('');
       }
     });
 
@@ -284,14 +459,159 @@
 
     btnWhats.addEventListener('click', () => {
       if(!codigo.value){
-        const p = gerarPayloadPix();
+        const p = gerarPayloadPix(true);
         if(!p) return;
         codigo.value = p;
+        atualizarQr(p);
       }
-      const msg = codigo.value; // só o código
+      const msg = codigo.value;
       const url = 'https://wa.me/?text=' + encodeURIComponent(msg);
       window.open(url,'_blank');
     });
+
+    btnShareQr.addEventListener('click', async () => {
+      let payload = codigo.value.trim();
+      if(!payload){
+        payload = gerarPayloadPix(true);
+        if(!payload){
+          return;
+        }
+        codigo.value = payload;
+        atualizarQr(payload);
+      }
+
+      const qrUrl = getQrUrl(payload);
+
+      if(!navigator.share){
+        erro.textContent = 'Compartilhamento com imagem não é suportado neste navegador/aparelho.';
+        return;
+      }
+
+      try{
+        const resp = await fetch(qrUrl);
+        const blob = await resp.blob();
+        const file = new File([blob], 'pix_qr.png', { type: blob.type || 'image/png' });
+
+        if(navigator.canShare && !navigator.canShare({ files:[file] })){
+          erro.textContent = 'Este aparelho não suporta compartilhar imagem com legenda pelo navegador.';
+          return;
+        }
+
+        await navigator.share({
+          files: [file],
+          text: codigo.value || payload
+        });
+      }catch(e){
+        console.error(e);
+        erro.textContent = 'Não foi possível carregar o QR Code para compartilhar.';
+      }
+    });
+
+    // === PDF do relatório ===
+
+    async function gerarPdfBlobDoLog(){
+      const log = carregarLog();
+      if(!log.length){
+        erro.textContent = 'Nenhum registro no histórico para gerar PDF.';
+        return null;
+      }
+      if(!window.jspdf || !window.jspdf.jsPDF){
+        erro.textContent = 'Biblioteca de PDF não carregada (jspdf). Verifique a conexão na primeira vez.';
+        return null;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({orientation:'p', unit:'mm', format:'a4'});
+
+      doc.setFontSize(14);
+      doc.text('RELATORIO DE PIX GERADOS', 105, 15, { align: 'center' });
+
+      doc.setFontSize(9);
+      let y = 25;
+      const lineHeight = 5;
+
+      doc.setFont(undefined, 'bold');
+      doc.text('DATA/HORA', 10, y);
+      doc.text('ID',        50, y);
+      doc.text('VALOR',     95, y);
+      doc.text('RECEBEDOR', 120, y);
+      y += lineHeight;
+      doc.setFont(undefined, 'normal');
+
+      for(const r of log){
+        if(y > 280){
+          doc.addPage();
+          y = 15;
+        }
+        const dataStr = formatarData(r.dataIso);
+        const id = String(r.id || '');
+        const val = String(r.valor || '');
+        const rec = String(r.recebedor || '');
+        const msg = String(r.mensagem || '');
+
+        doc.text(dataStr, 10, y);
+        doc.text(id,       50, y);
+        doc.text(val,      95, y);
+        doc.text(rec,     120, y);
+        y += lineHeight;
+
+        if(msg){
+          const wrapped = doc.splitTextToSize('Msg: ' + msg, 180);
+          for(const line of wrapped){
+            if(y > 280){
+              doc.addPage();
+              y = 15;
+            }
+            doc.text(line, 10, y);
+            y += lineHeight;
+          }
+        }
+      }
+
+      const blob = doc.output('blob');
+      return blob;
+    }
+
+    btnPdf.addEventListener('click', async () => {
+      const blob = await gerarPdfBlobDoLog();
+      if(!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'relatorio_pix.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
+
+    btnWhatsPdf.addEventListener('click', async () => {
+      const blob = await gerarPdfBlobDoLog();
+      if(!blob) return;
+
+      if(!navigator.share){
+        erro.textContent = 'Compartilhamento de arquivos não é suportado neste navegador/aparelho.';
+        return;
+      }
+
+      const file = new File([blob], 'relatorio_pix.pdf', { type: 'application/pdf' });
+
+      if(navigator.canShare && !navigator.canShare({ files: [file] })){
+        erro.textContent = 'Este aparelho não suporta compartilhar PDF pelo navegador.';
+        return;
+      }
+
+      try{
+        await navigator.share({
+          files: [file],
+          text: 'Relatorio de Pix gerados'
+        });
+      }catch(e){
+        console.error(e);
+      }
+    });
+
+    // Atualiza histórico ao abrir
+    atualizarHistoricoTexto();
 
     if('serviceWorker' in navigator){
       window.addEventListener('load', () => {
